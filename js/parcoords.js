@@ -79,8 +79,8 @@ function render({ model, el }) {
     const groupColors = {}
     const baseColors = [
         "rgba(59, 130, 246, 1)",  // blue
-        "rgba(16, 185, 129, 1)",  // green
         "rgba(239, 68, 68, 1)",   // red
+        "rgba(16, 185, 129, 1)",  // green
         "rgba(217, 119, 6, 1)",   // orange
         "rgba(139, 92, 246, 1)",  // purple
         "rgba(236, 72, 153, 1)"   // pink
@@ -103,8 +103,8 @@ function render({ model, el }) {
     const labelColor = "#1f2937"; 
     const brushColor = "rgba(107, 114, 128, 0.3)"; 
     const interactionAreaColor = "rgba(100, 100, 255, 0.07)"; 
-    const axisLabelFont = "12px Inter"; 
-    const axisTickFont = "10px Inter"; 
+    const axisLabelFont = "14px 'Helvetica Neue', Arial, sans-serif"; 
+    const axisTickFont = "10px 'Helvetica Neue', Arial, sans-serif"; 
     const axisWidthThreshold = 15;
 
     // --- State Variables ---
@@ -129,7 +129,7 @@ function render({ model, el }) {
     // --- Drawing Functions ---
     function drawBackgroundLayer(isActiveBrush) { 
         console.log(`Drawing background layer (brush active: ${isActiveBrush})...`); const startTime = performance.now(); bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height); bgCtx.lineWidth = 0.5;
-        currentData.forEach(d => { let strokeStyle; if (isActiveBrush) { strokeStyle = defaultLineColor; } else { const color = groupColors[d.group] || defaultLineColor; strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`); } bgCtx.strokeStyle = strokeStyle; bgCtx.beginPath(); dimensions.forEach((dim, i) => { const x = xScales[dim]; const y = yScales[dim].scaleFunc(d[dim]); if (i === 0) bgCtx.moveTo(x, y); else bgCtx.lineTo(x, y); }); bgCtx.stroke(); }); backgroundNeedsRedraw = false; const endTime = performance.now(); console.log(`Background layer took ${(endTime - startTime).toFixed(1)} ms`);
+        currentData.forEach(d => { let strokeStyle; if (isActiveBrush) { strokeStyle = defaultLineColor; } else { const color = groupColors[d.color] || defaultLineColor; strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`); } bgCtx.strokeStyle = strokeStyle; bgCtx.beginPath(); dimensions.forEach((dim, i) => { const x = xScales[dim]; const y = yScales[dim].scaleFunc(d[dim]); if (i === 0) bgCtx.moveTo(x, y); else bgCtx.lineTo(x, y); }); bgCtx.stroke(); }); backgroundNeedsRedraw = false; const endTime = performance.now(); console.log(`Background layer took ${(endTime - startTime).toFixed(1)} ms`);
     }
     function draw() { 
         const canvasWidth = canvas.width; 
@@ -158,7 +158,7 @@ function render({ model, el }) {
                 fgCtx.lineWidth = 1.0;
                 
                 highlightedData.forEach(d => { 
-                    const color = groupColors[d.group] || defaultLineColor; 
+                    const color = groupColors[d.color] || defaultLineColor; 
                     fgCtx.strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`); 
                     fgCtx.beginPath(); 
                     dimensions.forEach((dim, i) => { 
@@ -194,7 +194,7 @@ function render({ model, el }) {
             ctx.stroke(); 
             ctx.fillText(dim, x, margin.top - 15); 
             ctx.font = axisTickFont; 
-            ctx.textAlign = "right"; 
+            ctx.textAlign = "right";
             ctx.textBaseline = "middle"; 
             ctx.fillText(yScales[dim].min.toFixed(1), x - 4, yRangeMin); 
             ctx.fillText(yScales[dim].max.toFixed(1), x - 4, yRangeMax); 
@@ -226,7 +226,16 @@ function render({ model, el }) {
     // --- Interaction Logic ---
     function getHighlightedData() { 
         const activeBrushes = Object.entries(brushes).filter(([_, extent]) => extent); if (activeBrushes.length === 0) return [];
-        return currentData.filter(d => { return activeBrushes.every(([dim, extent]) => { const scaleInfo = yScales[dim]; const val = d[dim]; const yPos = scaleInfo.scaleFunc(val); const brushMinY = Math.min(extent[0], extent[1]); const brushMaxY = Math.max(extent[0], extent[1]); return yPos >= brushMinY && yPos <= brushMaxY; }); });
+        return currentData.filter(d => { 
+            return activeBrushes.every(([dim, extent]) => { 
+                const scaleInfo = yScales[dim]; 
+                const val = d[dim]; 
+                const yPos = scaleInfo.scaleFunc(val); 
+                const brushMinY = Math.min(extent[0], extent[1]); 
+                const brushMaxY = Math.max(extent[0], extent[1]); 
+                return yPos >= brushMinY && yPos <= brushMaxY; 
+            }); 
+        });
     }
     function getMousePos(canvas, evt) { return { x: evt.offsetX, y: evt.offsetY }; }
     function getAxisUnderCursor(mouseX_logical) { 
@@ -383,8 +392,35 @@ function render({ model, el }) {
         const highlighted = getHighlightedData(); if (highlighted.length > 0 && highlighted.length < currentData.length) { currentData = highlighted; brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw(); } else if (isBrushActiveInitially){ brushes = {}; isBrushing = false; isDraggingBrush = false; canvas.classList.remove('brushing', 'dragging'); draw(); }
     }
     function handleExclude() {
-        const isBrushActiveInitially = Object.keys(brushes).length > 0; if (!isBrushActiveInitially) return;
-        const highlighted = getHighlightedData(); if (highlighted.length > 0 && highlighted.length < currentData.length) { const highlightedSet = new Set(highlighted); currentData = currentData.filter(d => !highlightedSet.has(d)); brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw(); } else if (isBrushActiveInitially){ if (highlighted.length === currentData.length) { currentData = []; } brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw(); }
+        const isBrushActiveInitially = Object.keys(brushes).length > 0; 
+        if (!isBrushActiveInitially) return;
+        
+        const highlighted = getHighlightedData(); 
+        if (highlighted.length > 0 && highlighted.length < currentData.length) { 
+            // Create a Set of highlighted data points for efficient lookup
+            const highlightedSet = new Set(highlighted);
+            
+            // Filter out all highlighted points from currentData
+            currentData = currentData.filter(d => !highlightedSet.has(d)); 
+            
+            // Reset brush state
+            brushes = {}; 
+            isBrushing = false; 
+            isDraggingBrush = false; 
+            backgroundNeedsRedraw = true; 
+            canvas.classList.remove('brushing', 'dragging'); 
+            draw(); 
+        } else if (isBrushActiveInitially) { 
+            if (highlighted.length === currentData.length) { 
+                currentData = []; 
+            } 
+            brushes = {}; 
+            isBrushing = false; 
+            isDraggingBrush = false; 
+            backgroundNeedsRedraw = true; 
+            canvas.classList.remove('brushing', 'dragging'); 
+            draw(); 
+        }
     }
 
     // --- Initialization and Resizing ---

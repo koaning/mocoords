@@ -64,10 +64,10 @@ function render({ model, el }) {
   const baseColors = [
     "rgba(59, 130, 246, 1)",
     // blue
-    "rgba(16, 185, 129, 1)",
-    // green
     "rgba(239, 68, 68, 1)",
     // red
+    "rgba(16, 185, 129, 1)",
+    // green
     "rgba(217, 119, 6, 1)",
     // orange
     "rgba(139, 92, 246, 1)",
@@ -88,8 +88,8 @@ function render({ model, el }) {
   const labelColor = "#1f2937";
   const brushColor = "rgba(107, 114, 128, 0.3)";
   const interactionAreaColor = "rgba(100, 100, 255, 0.07)";
-  const axisLabelFont = "12px Inter";
-  const axisTickFont = "10px Inter";
+  const axisLabelFont = "14px 'Helvetica Neue', Arial, sans-serif";
+  const axisTickFont = "10px 'Helvetica Neue', Arial, sans-serif";
   const axisWidthThreshold = 15;
   let width, height, plotWidth, plotHeight;
   let xScales = {};
@@ -122,7 +122,7 @@ function render({ model, el }) {
       if (isActiveBrush) {
         strokeStyle = defaultLineColor;
       } else {
-        const color = groupColors[d.group] || defaultLineColor;
+        const color = groupColors[d.color] || defaultLineColor;
         strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`);
       }
       bgCtx.strokeStyle = strokeStyle;
@@ -161,7 +161,7 @@ function render({ model, el }) {
         const highlightedData = getHighlightedData();
         fgCtx.lineWidth = 1;
         highlightedData.forEach((d) => {
-          const color = groupColors[d.group] || defaultLineColor;
+          const color = groupColors[d.color] || defaultLineColor;
           fgCtx.strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`);
           fgCtx.beginPath();
           dimensions.forEach((dim, i) => {
