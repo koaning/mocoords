@@ -237,7 +237,13 @@ function render({ model, el }) {
             }); 
         });
     }
-    function getMousePos(canvas, evt) { return { x: evt.offsetX, y: evt.offsetY }; }
+    function getMousePos(canvas, evt) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top
+        };
+    }
     function getAxisUnderCursor(mouseX_logical) { 
         let foundDim = null; for (const dim of dimensions) { const axisX_logical = xScales[dim]; const halfThreshold = axisWidthThreshold / 2; if (mouseX_logical >= axisX_logical - halfThreshold && mouseX_logical <= axisX_logical + halfThreshold) { foundDim = dim; break; } } return foundDim;
     }

@@ -236,7 +236,11 @@ function render({ model, el }) {
     });
   }
   function getMousePos(canvas2, evt) {
-    return { x: evt.offsetX, y: evt.offsetY };
+    const rect = canvas2.getBoundingClientRect();
+    return {
+      x: evt.clientX - rect.left,
+      y: evt.clientY - rect.top
+    };
   }
   function getAxisUnderCursor(mouseX_logical) {
     let foundDim = null;
