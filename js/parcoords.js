@@ -1,7 +1,7 @@
 function render({ model, el }) {
     // Create container div to hold all elements
     const container = document.createElement('div');
-        
+    
     // Create and append chart container with canvas
     const chartContainer = document.createElement('div');
     chartContainer.className = "chart-container";
@@ -44,12 +44,12 @@ function render({ model, el }) {
     
     // Append the container to the element
     el.appendChild(container);
-
+    
     // console.log(model.get("data"));
-
-     // --- Data Generation ---
-     const data = model.get("data");
-     function generateData(count) {
+    
+    // --- Data Generation ---
+    const data = model.get("data");
+    function generateData(count) {
         const data = []; console.log(`Generating ${count} data points...`); const startTime = performance.now();
         for (let i = 0; i < count; i++) {
             const dimA = Math.random() * 100; 
@@ -65,12 +65,12 @@ function render({ model, el }) {
     console.log(data);
     const originalData = Object.freeze(model.get("data").map(d => ({ ...d, color: d.color || 'default' })));
     const DATA_COUNT = originalData.length; 
-
+    
     // --- Canvas Setup ---
     const ctx = canvas.getContext('2d');
     const bgCanvas = document.createElement('canvas'); const bgCtx = bgCanvas.getContext('2d');
     const fgCanvas = document.createElement('canvas'); const fgCtx = fgCanvas.getContext('2d');
-
+    
     // --- Configuration ---
     const margin = { top: 40, right: 30, bottom: 30, left: 30 }; 
     const dimensions = Object.keys(originalData[0] || {}).filter(key => key !== 'color');
@@ -106,7 +106,7 @@ function render({ model, el }) {
     const axisLabelFont = "14px 'Helvetica Neue', Arial, sans-serif"; 
     const axisTickFont = "10px 'Helvetica Neue', Arial, sans-serif"; 
     const axisWidthThreshold = 15;
-
+    
     // --- State Variables ---
     let width, height, plotWidth, plotHeight; let xScales = {}; let yScales = {}; let brushes = {};
     let isBrushing = false; // True when creating/resizing a brush
@@ -116,7 +116,7 @@ function render({ model, el }) {
     let dragStartOffsetY = 0; // Mouse Y offset relative to top of dragged brush
     let draggedBrushInitialExtent = null; // Store extent at drag start
     let currentData = []; let backgroundNeedsRedraw = true; let previousBrushState = false;
-
+    
     // --- Scaling Functions ---
     function linearScale(domainMin, domainMax, rangeMin, rangeMax) { 
         return function(value) {
@@ -125,7 +125,7 @@ function render({ model, el }) {
             return rangeMin + (clampedValue - domainMin) * (rangeMax - rangeMin) / (domainMax - domainMin);
         };
     }
-
+    
     // --- Drawing Functions ---
     function drawBackgroundLayer(isActiveBrush) { 
         console.log(`Drawing background layer (brush active: ${isActiveBrush})...`); const startTime = performance.now(); bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height); bgCtx.lineWidth = 0.5;
@@ -204,7 +204,7 @@ function render({ model, el }) {
         });
         
         ctx.fillStyle = interactionAreaColor; 
-        dimensions.forEach(dim => { 
+        dimensions.forEach(dim => {
             const x = xScales[dim]; 
             ctx.fillRect(x - axisWidthThreshold / 2, margin.top, axisWidthThreshold, plotHeight); 
         });
@@ -222,7 +222,7 @@ function render({ model, el }) {
         subsetButton.disabled = !isBrushActive; 
         excludeButton.disabled = !isBrushActive;
     }
-
+    
     // --- Interaction Logic ---
     function getHighlightedData() { 
         const activeBrushes = Object.entries(brushes).filter(([_, extent]) => extent); if (activeBrushes.length === 0) return [];
@@ -239,27 +239,27 @@ function render({ model, el }) {
     }
     function getMousePos(canvas, evt) { return { x: evt.offsetX, y: evt.offsetY }; }
     function getAxisUnderCursor(mouseX_logical) { 
-         let foundDim = null; for (const dim of dimensions) { const axisX_logical = xScales[dim]; const halfThreshold = axisWidthThreshold / 2; if (mouseX_logical >= axisX_logical - halfThreshold && mouseX_logical <= axisX_logical + halfThreshold) { foundDim = dim; break; } } return foundDim;
+        let foundDim = null; for (const dim of dimensions) { const axisX_logical = xScales[dim]; const halfThreshold = axisWidthThreshold / 2; if (mouseX_logical >= axisX_logical - halfThreshold && mouseX_logical <= axisX_logical + halfThreshold) { foundDim = dim; break; } } return foundDim;
     }
     // --- Modified Event Handlers ---
     function handleMouseDown(event) {
         const pos = getMousePos(canvas, event);
         let clickedOnExistingBrush = false;
-
+        
         // 1. Check if clicked INSIDE an existing brush rectangle
         for (const dim in brushes) {
             if (brushes.hasOwnProperty(dim)) {
                 const extent = brushes[dim];
                 if (!extent) continue; // Should not happen, but safe check
-
+                
                 const axisX_logical = xScales[dim];
                 const halfThreshold = axisWidthThreshold / 2;
                 const minXRange = axisX_logical - halfThreshold;
                 const maxXRange = axisX_logical + halfThreshold;
-
+                
                 const brushMinY = Math.min(extent[0], extent[1]);
                 const brushMaxY = Math.max(extent[0], extent[1]);
-
+                
                 if (pos.x >= minXRange && pos.x <= maxXRange && pos.y >= brushMinY && pos.y <= brushMaxY) {
                     // Clicked inside this brush! Start dragging.
                     clickedOnExistingBrush = true;
@@ -274,7 +274,7 @@ function render({ model, el }) {
                 }
             }
         }
-
+        
         // 2. If not clicked on existing brush, check if clicked near an axis line (interaction area)
         if (!clickedOnExistingBrush) {
             const axis = getAxisUnderCursor(pos.x);
@@ -287,7 +287,7 @@ function render({ model, el }) {
                 brushStartY = Math.max(margin.top, Math.min(margin.top + plotHeight, pos.y));
                 brushes[brushAxis] = [brushStartY, brushStartY]; // Add/replace brush on this axis
                 canvas.classList.add('brushing'); // Change cursor
-
+                
                 if (!wasAlreadyBrushing) {
                     previousBrushState = false; // Force background redraw if starting first brush
                 }
@@ -305,7 +305,31 @@ function render({ model, el }) {
             }
         }
     }
-
+    
+    function getHighlightedData() {
+        // If no brushes are active, return all data
+        if (Object.keys(brushes).length === 0) {
+            return currentData;
+        }
+        
+        // Filter data based on active brushes
+        return currentData.filter(d => {
+            // Check if the data point is within all active brushes
+            return Object.entries(brushes).every(([dim, extent]) => {
+                const value = d[dim];
+                const yScale = yScales[dim].scaleFunc;
+                const valueY = yScale(value);
+                
+                // Get min and max Y values of the brush
+                const brushMinY = Math.min(extent[0], extent[1]);
+                const brushMaxY = Math.max(extent[0], extent[1]);
+                
+                // Check if the data point's value is within the brush extent
+                return valueY >= brushMinY && valueY <= brushMaxY;
+            });
+        });
+    }
+    
     function handleMouseMove(event) {
         if (isDraggingBrush) {
             // --- Handle Dragging Existing Brush ---
@@ -315,7 +339,7 @@ function render({ model, el }) {
                 const brushHeight = Math.abs(draggedBrushInitialExtent[0] - draggedBrushInitialExtent[1]);
                 let newTopY = pos.y - dragStartOffsetY;
                 let newBottomY = newTopY + brushHeight;
-
+                
                 // Constrain brush within plot bounds
                 if (newTopY < margin.top) {
                     newTopY = margin.top;
@@ -327,12 +351,12 @@ function render({ model, el }) {
                     // Ensure top didn't go negative if height is large
                     newTopY = Math.max(margin.top, newTopY);
                 }
-
+                
                 // Update the brush extent for the dragged axis
                 brushes[brushAxis] = [newTopY, newBottomY];
                 draw(); // Redraw (only foreground + UI updates needed)
             });
-
+            
         } else if (isBrushing) {
             // --- Handle Creating/Resizing Brush ---
             requestAnimationFrame(() => {
@@ -347,48 +371,50 @@ function render({ model, el }) {
         }
         // Update cursor based on hover state (optional enhancement - can add later if needed)
     }
-
+    
     function handleMouseUp(event) {
         const wasBrushing = isBrushing; // Store state before resetting
-
+        
         if (isBrushing || isDraggingBrush) {
             // If we were creating/resizing (isBrushing), check for zero-height brush
-             if (wasBrushing && brushes[brushAxis] && Math.abs(brushes[brushAxis][0] - brushes[brushAxis][1]) < 1) {
-                 delete brushes[brushAxis]; // Remove only the current axis' brush if invalid
-             }
-
-             // Reset all interaction states
-             isBrushing = false;
-             isDraggingBrush = false;
-             const anyBrushRemaining = Object.keys(brushes).length > 0;
-
-             // Only change overall brush state if no brushes remain (affects background redraw)
-             if (!anyBrushRemaining && previousBrushState) {
-                 // Trigger background redraw by forcing state mismatch in next draw()
-                 previousBrushState = true; // Will be set false in draw, causing redraw
-             } else if (anyBrushRemaining && !previousBrushState) {
-                 // Trigger background redraw if we just added the first brush
-                 previousBrushState = false;
-             }
-
-
-             brushAxis = null;
-             brushStartY = null;
-             dragStartOffsetY = 0;
-             draggedBrushInitialExtent = null;
-             canvas.classList.remove('brushing', 'dragging'); // Reset cursor classes
-             // console.log("Mouse Up");
-
-             draw(); // Final redraw to update UI and potentially background
+            if (wasBrushing && brushes[brushAxis] && Math.abs(brushes[brushAxis][0] - brushes[brushAxis][1]) < 1) {
+                delete brushes[brushAxis]; // Remove only the current axis' brush if invalid
+            }
+            
+            // Reset all interaction states
+            isBrushing = false;
+            isDraggingBrush = false;
+            const anyBrushRemaining = Object.keys(brushes).length > 0;
+            
+            // Only change overall brush state if no brushes remain (affects background redraw)
+            if (!anyBrushRemaining && previousBrushState) {
+                // Trigger background redraw by forcing state mismatch in next draw()
+                previousBrushState = true; // Will be set false in draw, causing redraw
+            } else if (anyBrushRemaining && !previousBrushState) {
+                // Trigger background redraw if we just added the first brush
+                previousBrushState = false;
+            }
+            
+            
+            brushAxis = null;
+            brushStartY = null;
+            dragStartOffsetY = 0;
+            draggedBrushInitialExtent = null;
+            canvas.classList.remove('brushing', 'dragging'); // Reset cursor classes
+            // console.log("Mouse Up");
+            
+            draw(); // Final redraw to update UI and potentially background
+            model.set("selection", getHighlightedData());
+            model.save_changes();
         }
     }
-
+    
     // --- Button Handlers --- (Mostly same, ensure states are reset)
     function handleReset() {
         currentData = [...originalData]; brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw();
     }
     function handleSubset() {
-         const isBrushActiveInitially = Object.keys(brushes).length > 0; if (!isBrushActiveInitially) return;
+        const isBrushActiveInitially = Object.keys(brushes).length > 0; if (!isBrushActiveInitially) return;
         const highlighted = getHighlightedData(); if (highlighted.length > 0 && highlighted.length < currentData.length) { currentData = highlighted; brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw(); } else if (isBrushActiveInitially){ brushes = {}; isBrushing = false; isDraggingBrush = false; canvas.classList.remove('brushing', 'dragging'); draw(); }
     }
     function handleExclude() {
@@ -422,7 +448,7 @@ function render({ model, el }) {
             draw(); 
         }
     }
-
+    
     // --- Initialization and Resizing ---
     function setup() { /* ... same as before, ensures off-screen canvases are sized/scaled ... */
         const dpr = window.devicePixelRatio || 1; 
@@ -515,14 +541,14 @@ function render({ model, el }) {
         backgroundNeedsRedraw = true; 
         draw();
     }
-
+    
     // --- Event Listeners --- (mousemove listener updated slightly for clarity)
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mousemove', (event) => {
         // Only handle move if actively brushing OR dragging
         if (isBrushing || isDraggingBrush) {
-             event.preventDefault(); // Prevent text selection, etc.
-             handleMouseMove(event);
+            event.preventDefault(); // Prevent text selection, etc.
+            handleMouseMove(event);
         }
         // Note: Cursor update on hover could be added here if desired
     });
@@ -532,10 +558,10 @@ function render({ model, el }) {
     subsetButton.addEventListener('click', handleSubset);
     excludeButton.addEventListener('click', handleExclude);
     let resizeTimeout; window.addEventListener('resize', () => { clearTimeout(resizeTimeout); resizeTimeout = setTimeout(() => { backgroundNeedsRedraw = true; setup(); }, 150); });
-
+    
     // --- Initial Setup ---
     setup();
-
+    
 };
 
 export default { render };

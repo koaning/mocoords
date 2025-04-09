@@ -11,6 +11,7 @@ class ParallelCoordinates(anywidget.AnyWidget):
     _esm = Path(__file__).parent / 'static' / 'parcoords.js'
     _css = Path(__file__).parent / 'static' / 'parcoords.css'
     data = traitlets.List([]).tag(sync=True)
+    selection = traitlets.List([]).tag(sync=True)
 
     def __init__(self, data, **kwargs):
         super().__init__(**kwargs)

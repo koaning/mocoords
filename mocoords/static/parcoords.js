@@ -300,6 +300,21 @@ function render({ model, el }) {
       }
     }
   }
+  function getHighlightedData() {
+    if (Object.keys(brushes).length === 0) {
+      return currentData;
+    }
+    return currentData.filter((d) => {
+      return Object.entries(brushes).every(([dim, extent]) => {
+        const value = d[dim];
+        const yScale = yScales[dim].scaleFunc;
+        const valueY = yScale(value);
+        const brushMinY = Math.min(extent[0], extent[1]);
+        const brushMaxY = Math.max(extent[0], extent[1]);
+        return valueY >= brushMinY && valueY <= brushMaxY;
+      });
+    });
+  }
   function handleMouseMove(event) {
     if (isDraggingBrush) {
       requestAnimationFrame(() => {
@@ -354,6 +369,8 @@ function render({ model, el }) {
       draggedBrushInitialExtent = null;
       canvas.classList.remove("brushing", "dragging");
       draw();
+      model.set("selection", getHighlightedData());
+      model.save_changes();
     }
   }
   function handleReset() {
