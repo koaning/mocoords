@@ -1,10 +1,6 @@
 // js/parcoords.js
 function render({ model, el }) {
   const container = document.createElement("div");
-  const titleDiv = document.createElement("div");
-  titleDiv.className = "title-text";
-  titleDiv.textContent = "Interactive Parallel Coordinates (Simulated Data - Draggable Brushes)";
-  container.appendChild(titleDiv);
   const chartContainer = document.createElement("div");
   chartContainer.className = "chart-container";
   const canvas = document.createElement("canvas");
@@ -36,8 +32,9 @@ function render({ model, el }) {
   buttonContainer.appendChild(excludeButton);
   container.appendChild(buttonContainer);
   el.appendChild(container);
+  const data = model.get("data");
   function generateData(count) {
-    const data = [];
+    const data2 = [];
     console.log(`Generating ${count} data points...`);
     const startTime = performance.now();
     for (let i = 0; i < count; i++) {
@@ -47,22 +44,43 @@ function render({ model, el }) {
       const dimD = dimA * 0.5 + Math.random() * 50;
       const dimE = 200 - dimB * 0.8 + Math.random() * 40;
       let group = dimA < 33 ? "groupA" : dimA < 66 ? "groupB" : "groupC";
-      data.push({ dimA, dimB, dimC, dimD, dimE, group });
+      data2.push({ dimA, dimB, dimC, dimD, dimE, group });
     }
     const endTime = performance.now();
     console.log(`Data generation took ${(endTime - startTime).toFixed(1)} ms`);
-    return data;
+    return data2;
   }
-  const DATA_COUNT = 1e5;
-  const originalIrisData = Object.freeze(generateData(DATA_COUNT));
+  console.log(data);
+  const originalData = Object.freeze(model.get("data").map((d) => ({ ...d, color: d.color || "default" })));
+  const DATA_COUNT = originalData.length;
   const ctx = canvas.getContext("2d");
   const bgCanvas = document.createElement("canvas");
   const bgCtx = bgCanvas.getContext("2d");
   const fgCanvas = document.createElement("canvas");
   const fgCtx = fgCanvas.getContext("2d");
   const margin = { top: 40, right: 30, bottom: 30, left: 30 };
-  const dimensions = ["dimA", "dimB", "dimC", "dimD", "dimE"];
-  const groupColors = { "groupA": "rgba(59, 130, 246, 1)", "groupB": "rgba(16, 185, 129, 1)", "groupC": "rgba(239, 68, 68, 1)" };
+  const dimensions = Object.keys(originalData[0] || {}).filter((key) => key !== "color");
+  const groupColors = {};
+  const baseColors = [
+    "rgba(59, 130, 246, 1)",
+    // blue
+    "rgba(239, 68, 68, 1)",
+    // red
+    "rgba(16, 185, 129, 1)",
+    // green
+    "rgba(217, 119, 6, 1)",
+    // orange
+    "rgba(139, 92, 246, 1)",
+    // purple
+    "rgba(236, 72, 153, 1)"
+    // pink
+  ];
+  const uniqueGroups = [...new Set(originalData.map((d) => d.color))];
+  uniqueGroups.forEach((group, index) => {
+    groupColors[group] = baseColors[index % baseColors.length];
+  });
+  console.log(uniqueGroups);
+  console.log(groupColors);
   const defaultLineAlpha = Math.max(5e-3, Math.min(0.05, 30 / DATA_COUNT));
   const defaultLineColor = `rgba(156, 163, 175, ${defaultLineAlpha})`;
   const activeLineAlpha = Math.max(0.05, Math.min(0.7, 500 / DATA_COUNT));
@@ -70,8 +88,8 @@ function render({ model, el }) {
   const labelColor = "#1f2937";
   const brushColor = "rgba(107, 114, 128, 0.3)";
   const interactionAreaColor = "rgba(100, 100, 255, 0.07)";
-  const axisLabelFont = "12px Inter";
-  const axisTickFont = "10px Inter";
+  const axisLabelFont = "14px 'Helvetica Neue', Arial, sans-serif";
+  const axisTickFont = "10px 'Helvetica Neue', Arial, sans-serif";
   const axisWidthThreshold = 15;
   let width, height, plotWidth, plotHeight;
   let xScales = {};
@@ -104,7 +122,7 @@ function render({ model, el }) {
       if (isActiveBrush) {
         strokeStyle = defaultLineColor;
       } else {
-        const color = groupColors[d.group] || defaultLineColor;
+        const color = groupColors[d.color] || defaultLineColor;
         strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`);
       }
       bgCtx.strokeStyle = strokeStyle;
@@ -132,26 +150,34 @@ function render({ model, el }) {
       previousBrushState = isBrushActive;
     }
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-    ctx.drawImage(bgCanvas, 0, 0, width, height);
+    if (bgCanvas.width > 0 && bgCanvas.height > 0) {
+      ctx.drawImage(bgCanvas, 0, 0, width, height);
+    } else {
+      console.warn("Background canvas has invalid dimensions, skipping draw");
+    }
     if (isBrushActive) {
-      fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height);
-      const highlightedData = getHighlightedData();
-      fgCtx.lineWidth = 1;
-      highlightedData.forEach((d) => {
-        const color = groupColors[d.group] || defaultLineColor;
-        fgCtx.strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`);
-        fgCtx.beginPath();
-        dimensions.forEach((dim, i) => {
-          const x = xScales[dim];
-          const y = yScales[dim].scaleFunc(d[dim]);
-          if (i === 0)
-            fgCtx.moveTo(x, y);
-          else
-            fgCtx.lineTo(x, y);
+      if (fgCanvas.width > 0 && fgCanvas.height > 0) {
+        fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height);
+        const highlightedData = getHighlightedData();
+        fgCtx.lineWidth = 1;
+        highlightedData.forEach((d) => {
+          const color = groupColors[d.color] || defaultLineColor;
+          fgCtx.strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`);
+          fgCtx.beginPath();
+          dimensions.forEach((dim, i) => {
+            const x = xScales[dim];
+            const y = yScales[dim].scaleFunc(d[dim]);
+            if (i === 0)
+              fgCtx.moveTo(x, y);
+            else
+              fgCtx.lineTo(x, y);
+          });
+          fgCtx.stroke();
         });
-        fgCtx.stroke();
-      });
-      ctx.drawImage(fgCanvas, 0, 0, width, height);
+        ctx.drawImage(fgCanvas, 0, 0, width, height);
+      } else {
+        console.warn("Foreground canvas has invalid dimensions, skipping draw");
+      }
     }
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = axisColor;
@@ -210,7 +236,11 @@ function render({ model, el }) {
     });
   }
   function getMousePos(canvas2, evt) {
-    return { x: evt.offsetX, y: evt.offsetY };
+    const rect = canvas2.getBoundingClientRect();
+    return {
+      x: evt.clientX - rect.left,
+      y: evt.clientY - rect.top
+    };
   }
   function getAxisUnderCursor(mouseX_logical) {
     let foundDim = null;
@@ -274,6 +304,21 @@ function render({ model, el }) {
       }
     }
   }
+  function getHighlightedData() {
+    if (Object.keys(brushes).length === 0) {
+      return currentData;
+    }
+    return currentData.filter((d) => {
+      return Object.entries(brushes).every(([dim, extent]) => {
+        const value = d[dim];
+        const yScale = yScales[dim].scaleFunc;
+        const valueY = yScale(value);
+        const brushMinY = Math.min(extent[0], extent[1]);
+        const brushMaxY = Math.max(extent[0], extent[1]);
+        return valueY >= brushMinY && valueY <= brushMaxY;
+      });
+    });
+  }
   function handleMouseMove(event) {
     if (isDraggingBrush) {
       requestAnimationFrame(() => {
@@ -328,10 +373,12 @@ function render({ model, el }) {
       draggedBrushInitialExtent = null;
       canvas.classList.remove("brushing", "dragging");
       draw();
+      model.set("selection", getHighlightedData());
+      model.save_changes();
     }
   }
   function handleReset() {
-    currentData = [...originalIrisData];
+    currentData = [...originalData];
     brushes = {};
     isBrushing = false;
     isDraggingBrush = false;
@@ -391,6 +438,23 @@ function render({ model, el }) {
     const rect = canvas.getBoundingClientRect();
     width = rect.width;
     height = rect.height;
+    if (width <= 0 || height <= 0) {
+      console.log("Canvas dimensions are zero, waiting for resize...");
+      const resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const newWidth = entry.contentRect.width;
+          const newHeight = entry.contentRect.height;
+          if (newWidth > 0 && newHeight > 0) {
+            console.log(`Canvas resized to ${newWidth}x${newHeight}`);
+            resizeObserver.disconnect();
+            setup();
+            return;
+          }
+        }
+      });
+      resizeObserver.observe(canvas);
+      return;
+    }
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     ctx.resetTransform();
@@ -411,15 +475,22 @@ function render({ model, el }) {
     });
     yScales = {};
     dimensions.forEach((dim) => {
-      const domain = originalIrisData.reduce((acc, d) => [Math.min(acc[0], d[dim]), Math.max(acc[1], d[dim])], [Infinity, -Infinity]);
+      const domain = originalData.reduce((acc, d) => [
+        Math.min(acc[0], d[dim]),
+        Math.max(acc[1], d[dim])
+      ], [Infinity, -Infinity]);
       if (domain[0] === domain[1]) {
         domain[0] -= 0.5;
         domain[1] += 0.5;
       }
-      yScales[dim] = { min: domain[0], max: domain[1], scaleFunc: linearScale(domain[0], domain[1], margin.top + plotHeight, margin.top) };
+      yScales[dim] = {
+        min: domain[0],
+        max: domain[1],
+        scaleFunc: linearScale(domain[0], domain[1], margin.top + plotHeight, margin.top)
+      };
     });
     if (currentData.length === 0) {
-      currentData = [...originalIrisData];
+      currentData = [...originalData];
     }
     brushes = {};
     isBrushing = false;

@@ -2,12 +2,6 @@ function render({ model, el }) {
     // Create container div to hold all elements
     const container = document.createElement('div');
     
-    // Create and append title
-    const titleDiv = document.createElement('div');
-    titleDiv.className = "title-text";
-    titleDiv.textContent = "Interactive Parallel Coordinates (Simulated Data - Draggable Brushes)";
-    container.appendChild(titleDiv);
-    
     // Create and append chart container with canvas
     const chartContainer = document.createElement('div');
     chartContainer.className = "chart-container";
@@ -50,25 +44,69 @@ function render({ model, el }) {
     
     // Append the container to the element
     el.appendChild(container);
-
-
-     // --- Data Generation ---
-     function generateData(count) {
+    
+    // console.log(model.get("data"));
+    
+    // --- Data Generation ---
+    const data = model.get("data");
+    function generateData(count) {
         const data = []; console.log(`Generating ${count} data points...`); const startTime = performance.now();
         for (let i = 0; i < count; i++) {
-            const dimA = Math.random() * 100; const dimB = 50 + Math.random() * 100; const dimC = Math.random() > 0.5 ? Math.random() * 50 : 50 + Math.random() * 50; const dimD = dimA * 0.5 + Math.random() * 50; const dimE = 200 - dimB * 0.8 + Math.random() * 40; let group = (dimA < 33) ? 'groupA' : (dimA < 66 ? 'groupB' : 'groupC'); data.push({ dimA, dimB, dimC, dimD, dimE, group });
+            const dimA = Math.random() * 100; 
+            const dimB = 50 + Math.random() * 100; 
+            const dimC = Math.random() > 0.5 ? Math.random() * 50 : 50 + Math.random() * 50; 
+            const dimD = dimA * 0.5 + Math.random() * 50; 
+            const dimE = 200 - dimB * 0.8 + Math.random() * 40; 
+            let group = (dimA < 33) ? 'groupA' : (dimA < 66 ? 'groupB' : 'groupC'); 
+            data.push({ dimA, dimB, dimC, dimD, dimE, group });
         } const endTime = performance.now(); console.log(`Data generation took ${(endTime - startTime).toFixed(1)} ms`); return data;
     }
-    const DATA_COUNT = 100_000; const originalIrisData = Object.freeze(generateData(DATA_COUNT));
-
+    
+    console.log(data);
+    const originalData = Object.freeze(model.get("data").map(d => ({ ...d, color: d.color || 'default' })));
+    const DATA_COUNT = originalData.length; 
+    
     // --- Canvas Setup ---
     const ctx = canvas.getContext('2d');
     const bgCanvas = document.createElement('canvas'); const bgCtx = bgCanvas.getContext('2d');
     const fgCanvas = document.createElement('canvas'); const fgCtx = fgCanvas.getContext('2d');
-
+    
     // --- Configuration ---
-    const margin = { top: 40, right: 30, bottom: 30, left: 30 }; const dimensions = ["dimA", "dimB", "dimC", "dimD", "dimE"]; const groupColors = { "groupA": "rgba(59, 130, 246, 1)", "groupB": "rgba(16, 185, 129, 1)", "groupC": "rgba(239, 68, 68, 1)" }; const defaultLineAlpha = Math.max(0.005, Math.min(0.05, 30 / DATA_COUNT)); const defaultLineColor = `rgba(156, 163, 175, ${defaultLineAlpha})`; const activeLineAlpha = Math.max(0.05, Math.min(0.7, 500 / DATA_COUNT)); const axisColor = "#6b7280"; const labelColor = "#1f2937"; const brushColor = "rgba(107, 114, 128, 0.3)"; const interactionAreaColor = "rgba(100, 100, 255, 0.07)"; const axisLabelFont = "12px Inter"; const axisTickFont = "10px Inter"; const axisWidthThreshold = 15;
-
+    const margin = { top: 40, right: 30, bottom: 30, left: 30 }; 
+    const dimensions = Object.keys(originalData[0] || {}).filter(key => key !== 'color');
+    
+    // Generate colors dynamically based on unique groups in the data
+    const groupColors = {}
+    const baseColors = [
+        "rgba(59, 130, 246, 1)",  // blue
+        "rgba(239, 68, 68, 1)",   // red
+        "rgba(16, 185, 129, 1)",  // green
+        "rgba(217, 119, 6, 1)",   // orange
+        "rgba(139, 92, 246, 1)",  // purple
+        "rgba(236, 72, 153, 1)"   // pink
+    ];
+    
+    // Extract unique groups from data
+    const uniqueGroups = [...new Set(originalData.map(d => d.color))];
+    
+    // Assign colors to each unique group
+    uniqueGroups.forEach((group, index) => {
+        groupColors[group] = baseColors[index % baseColors.length];
+    });
+    console.log(uniqueGroups);
+    console.log(groupColors);
+    
+    const defaultLineAlpha = Math.max(0.005, Math.min(0.05, 30 / DATA_COUNT)); 
+    const defaultLineColor = `rgba(156, 163, 175, ${defaultLineAlpha})`; 
+    const activeLineAlpha = Math.max(0.05, Math.min(0.7, 500 / DATA_COUNT)); 
+    const axisColor = "#6b7280"; 
+    const labelColor = "#1f2937"; 
+    const brushColor = "rgba(107, 114, 128, 0.3)"; 
+    const interactionAreaColor = "rgba(100, 100, 255, 0.07)"; 
+    const axisLabelFont = "14px 'Helvetica Neue', Arial, sans-serif"; 
+    const axisTickFont = "10px 'Helvetica Neue', Arial, sans-serif"; 
+    const axisWidthThreshold = 15;
+    
     // --- State Variables ---
     let width, height, plotWidth, plotHeight; let xScales = {}; let yScales = {}; let brushes = {};
     let isBrushing = false; // True when creating/resizing a brush
@@ -78,66 +116,156 @@ function render({ model, el }) {
     let dragStartOffsetY = 0; // Mouse Y offset relative to top of dragged brush
     let draggedBrushInitialExtent = null; // Store extent at drag start
     let currentData = []; let backgroundNeedsRedraw = true; let previousBrushState = false;
-
+    
     // --- Scaling Functions ---
-    function linearScale(domainMin, domainMax, rangeMin, rangeMax) { /* ... same as before ... */
+    function linearScale(domainMin, domainMax, rangeMin, rangeMax) { 
         return function(value) {
             const clampedValue = Math.max(domainMin, Math.min(domainMax, value));
             if (domainMax === domainMin) return (rangeMin + rangeMax) / 2;
             return rangeMin + (clampedValue - domainMin) * (rangeMax - rangeMin) / (domainMax - domainMin);
         };
     }
-
+    
     // --- Drawing Functions ---
-    function drawBackgroundLayer(isActiveBrush) { /* ... same as before ... */
+    function drawBackgroundLayer(isActiveBrush) { 
         console.log(`Drawing background layer (brush active: ${isActiveBrush})...`); const startTime = performance.now(); bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height); bgCtx.lineWidth = 0.5;
-        currentData.forEach(d => { let strokeStyle; if (isActiveBrush) { strokeStyle = defaultLineColor; } else { const color = groupColors[d.group] || defaultLineColor; strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`); } bgCtx.strokeStyle = strokeStyle; bgCtx.beginPath(); dimensions.forEach((dim, i) => { const x = xScales[dim]; const y = yScales[dim].scaleFunc(d[dim]); if (i === 0) bgCtx.moveTo(x, y); else bgCtx.lineTo(x, y); }); bgCtx.stroke(); }); backgroundNeedsRedraw = false; const endTime = performance.now(); console.log(`Background layer took ${(endTime - startTime).toFixed(1)} ms`);
+        currentData.forEach(d => { let strokeStyle; if (isActiveBrush) { strokeStyle = defaultLineColor; } else { const color = groupColors[d.color] || defaultLineColor; strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`); } bgCtx.strokeStyle = strokeStyle; bgCtx.beginPath(); dimensions.forEach((dim, i) => { const x = xScales[dim]; const y = yScales[dim].scaleFunc(d[dim]); if (i === 0) bgCtx.moveTo(x, y); else bgCtx.lineTo(x, y); }); bgCtx.stroke(); }); backgroundNeedsRedraw = false; const endTime = performance.now(); console.log(`Background layer took ${(endTime - startTime).toFixed(1)} ms`);
     }
-    function draw() { /* ... same as before ... */
-        const canvasWidth = canvas.width; const canvasHeight = canvas.height; const isBrushActive = Object.keys(brushes).length > 0;
-        if (backgroundNeedsRedraw || isBrushActive !== previousBrushState) { drawBackgroundLayer(isBrushActive); previousBrushState = isBrushActive; }
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-        ctx.drawImage(bgCanvas, 0, 0, width, height); // Draw background
-        if (isBrushActive) { // Draw foreground if brushing
-            fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height); const highlightedData = getHighlightedData(); fgCtx.lineWidth = 1.0;
-            highlightedData.forEach(d => { const color = groupColors[d.group] || defaultLineColor; fgCtx.strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`); fgCtx.beginPath(); dimensions.forEach((dim, i) => { const x = xScales[dim]; const y = yScales[dim].scaleFunc(d[dim]); if (i === 0) fgCtx.moveTo(x, y); else fgCtx.lineTo(x, y); }); fgCtx.stroke(); }); ctx.drawImage(fgCanvas, 0, 0, width, height);
+    function draw() { 
+        const canvasWidth = canvas.width; 
+        const canvasHeight = canvas.height; 
+        const isBrushActive = Object.keys(brushes).length > 0;
+        
+        if (backgroundNeedsRedraw || isBrushActive !== previousBrushState) { 
+            drawBackgroundLayer(isBrushActive); 
+            previousBrushState = isBrushActive; 
         }
+        
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        
+        // Safety check to ensure bgCanvas has valid dimensions before drawing
+        if (bgCanvas.width > 0 && bgCanvas.height > 0) {
+            ctx.drawImage(bgCanvas, 0, 0, width, height); // Draw background
+        } else {
+            console.warn("Background canvas has invalid dimensions, skipping draw");
+        }
+        
+        if (isBrushActive) { // Draw foreground if brushing
+            // Safety check for foreground canvas
+            if (fgCanvas.width > 0 && fgCanvas.height > 0) {
+                fgCtx.clearRect(0, 0, fgCanvas.width, fgCanvas.height); 
+                const highlightedData = getHighlightedData(); 
+                fgCtx.lineWidth = 1.0;
+                
+                highlightedData.forEach(d => { 
+                    const color = groupColors[d.color] || defaultLineColor; 
+                    fgCtx.strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`); 
+                    fgCtx.beginPath(); 
+                    dimensions.forEach((dim, i) => { 
+                        const x = xScales[dim]; 
+                        const y = yScales[dim].scaleFunc(d[dim]); 
+                        if (i === 0) fgCtx.moveTo(x, y); 
+                        else fgCtx.lineTo(x, y); 
+                    }); 
+                    fgCtx.stroke(); 
+                }); 
+                
+                ctx.drawImage(fgCanvas, 0, 0, width, height);
+            } else {
+                console.warn("Foreground canvas has invalid dimensions, skipping draw");
+            }
+        }
+        
         // Draw UI elements
-        ctx.lineWidth = 1.5; ctx.strokeStyle = axisColor; ctx.fillStyle = labelColor; ctx.font = axisLabelFont; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-        dimensions.forEach(dim => { const x = xScales[dim]; const yRangeMin = margin.top + plotHeight; const yRangeMax = margin.top; ctx.beginPath(); ctx.moveTo(x, yRangeMax); ctx.lineTo(x, yRangeMin); ctx.stroke(); ctx.fillText(dim, x, margin.top - 15); ctx.font = axisTickFont; ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillText(yScales[dim].min.toFixed(1), x - 4, yRangeMin); ctx.fillText(yScales[dim].max.toFixed(1), x - 4, yRangeMax); ctx.font = axisLabelFont; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; });
-        ctx.fillStyle = interactionAreaColor; dimensions.forEach(dim => { const x = xScales[dim]; ctx.fillRect(x - axisWidthThreshold / 2, margin.top, axisWidthThreshold, plotHeight); });
-        ctx.fillStyle = brushColor; Object.entries(brushes).forEach(([dim, extent]) => { if (extent) { const x = xScales[dim]; const y1 = extent[0]; const y2 = extent[1]; ctx.fillRect(x - axisWidthThreshold / 2, Math.min(y1, y2), axisWidthThreshold, Math.abs(y2 - y1)); } });
-        subsetButton.disabled = !isBrushActive; excludeButton.disabled = !isBrushActive;
+        ctx.lineWidth = 1.5; 
+        ctx.strokeStyle = axisColor; 
+        ctx.fillStyle = labelColor; 
+        ctx.font = axisLabelFont; 
+        ctx.textAlign = "center"; 
+        ctx.textBaseline = "bottom";
+        
+        dimensions.forEach(dim => { 
+            const x = xScales[dim]; 
+            const yRangeMin = margin.top + plotHeight; 
+            const yRangeMax = margin.top; 
+            ctx.beginPath(); 
+            ctx.moveTo(x, yRangeMax); 
+            ctx.lineTo(x, yRangeMin); 
+            ctx.stroke(); 
+            ctx.fillText(dim, x, margin.top - 15); 
+            ctx.font = axisTickFont; 
+            ctx.textAlign = "right";
+            ctx.textBaseline = "middle"; 
+            ctx.fillText(yScales[dim].min.toFixed(1), x - 4, yRangeMin); 
+            ctx.fillText(yScales[dim].max.toFixed(1), x - 4, yRangeMax); 
+            ctx.font = axisLabelFont; 
+            ctx.textAlign = "center"; 
+            ctx.textBaseline = "bottom"; 
+        });
+        
+        ctx.fillStyle = interactionAreaColor; 
+        dimensions.forEach(dim => {
+            const x = xScales[dim]; 
+            ctx.fillRect(x - axisWidthThreshold / 2, margin.top, axisWidthThreshold, plotHeight); 
+        });
+        
+        ctx.fillStyle = brushColor; 
+        Object.entries(brushes).forEach(([dim, extent]) => { 
+            if (extent) { 
+                const x = xScales[dim]; 
+                const y1 = extent[0]; 
+                const y2 = extent[1]; 
+                ctx.fillRect(x - axisWidthThreshold / 2, Math.min(y1, y2), axisWidthThreshold, Math.abs(y2 - y1)); 
+            } 
+        });
+        
+        subsetButton.disabled = !isBrushActive; 
+        excludeButton.disabled = !isBrushActive;
     }
-
+    
     // --- Interaction Logic ---
-    function getHighlightedData() { /* ... same as before ... */
+    function getHighlightedData() { 
         const activeBrushes = Object.entries(brushes).filter(([_, extent]) => extent); if (activeBrushes.length === 0) return [];
-        return currentData.filter(d => { return activeBrushes.every(([dim, extent]) => { const scaleInfo = yScales[dim]; const val = d[dim]; const yPos = scaleInfo.scaleFunc(val); const brushMinY = Math.min(extent[0], extent[1]); const brushMaxY = Math.max(extent[0], extent[1]); return yPos >= brushMinY && yPos <= brushMaxY; }); });
+        return currentData.filter(d => { 
+            return activeBrushes.every(([dim, extent]) => { 
+                const scaleInfo = yScales[dim]; 
+                const val = d[dim]; 
+                const yPos = scaleInfo.scaleFunc(val); 
+                const brushMinY = Math.min(extent[0], extent[1]); 
+                const brushMaxY = Math.max(extent[0], extent[1]); 
+                return yPos >= brushMinY && yPos <= brushMaxY; 
+            }); 
+        });
     }
-    function getMousePos(canvas, evt) { return { x: evt.offsetX, y: evt.offsetY }; }
-    function getAxisUnderCursor(mouseX_logical) { /* ... same as before ... */
-         let foundDim = null; for (const dim of dimensions) { const axisX_logical = xScales[dim]; const halfThreshold = axisWidthThreshold / 2; if (mouseX_logical >= axisX_logical - halfThreshold && mouseX_logical <= axisX_logical + halfThreshold) { foundDim = dim; break; } } return foundDim;
+    function getMousePos(canvas, evt) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top
+        };
+    }
+    function getAxisUnderCursor(mouseX_logical) { 
+        let foundDim = null; for (const dim of dimensions) { const axisX_logical = xScales[dim]; const halfThreshold = axisWidthThreshold / 2; if (mouseX_logical >= axisX_logical - halfThreshold && mouseX_logical <= axisX_logical + halfThreshold) { foundDim = dim; break; } } return foundDim;
     }
     // --- Modified Event Handlers ---
     function handleMouseDown(event) {
         const pos = getMousePos(canvas, event);
         let clickedOnExistingBrush = false;
-
+        
         // 1. Check if clicked INSIDE an existing brush rectangle
         for (const dim in brushes) {
             if (brushes.hasOwnProperty(dim)) {
                 const extent = brushes[dim];
                 if (!extent) continue; // Should not happen, but safe check
-
+                
                 const axisX_logical = xScales[dim];
                 const halfThreshold = axisWidthThreshold / 2;
                 const minXRange = axisX_logical - halfThreshold;
                 const maxXRange = axisX_logical + halfThreshold;
-
+                
                 const brushMinY = Math.min(extent[0], extent[1]);
                 const brushMaxY = Math.max(extent[0], extent[1]);
-
+                
                 if (pos.x >= minXRange && pos.x <= maxXRange && pos.y >= brushMinY && pos.y <= brushMaxY) {
                     // Clicked inside this brush! Start dragging.
                     clickedOnExistingBrush = true;
@@ -152,7 +280,7 @@ function render({ model, el }) {
                 }
             }
         }
-
+        
         // 2. If not clicked on existing brush, check if clicked near an axis line (interaction area)
         if (!clickedOnExistingBrush) {
             const axis = getAxisUnderCursor(pos.x);
@@ -165,7 +293,7 @@ function render({ model, el }) {
                 brushStartY = Math.max(margin.top, Math.min(margin.top + plotHeight, pos.y));
                 brushes[brushAxis] = [brushStartY, brushStartY]; // Add/replace brush on this axis
                 canvas.classList.add('brushing'); // Change cursor
-
+                
                 if (!wasAlreadyBrushing) {
                     previousBrushState = false; // Force background redraw if starting first brush
                 }
@@ -183,7 +311,31 @@ function render({ model, el }) {
             }
         }
     }
-
+    
+    function getHighlightedData() {
+        // If no brushes are active, return all data
+        if (Object.keys(brushes).length === 0) {
+            return currentData;
+        }
+        
+        // Filter data based on active brushes
+        return currentData.filter(d => {
+            // Check if the data point is within all active brushes
+            return Object.entries(brushes).every(([dim, extent]) => {
+                const value = d[dim];
+                const yScale = yScales[dim].scaleFunc;
+                const valueY = yScale(value);
+                
+                // Get min and max Y values of the brush
+                const brushMinY = Math.min(extent[0], extent[1]);
+                const brushMaxY = Math.max(extent[0], extent[1]);
+                
+                // Check if the data point's value is within the brush extent
+                return valueY >= brushMinY && valueY <= brushMaxY;
+            });
+        });
+    }
+    
     function handleMouseMove(event) {
         if (isDraggingBrush) {
             // --- Handle Dragging Existing Brush ---
@@ -193,7 +345,7 @@ function render({ model, el }) {
                 const brushHeight = Math.abs(draggedBrushInitialExtent[0] - draggedBrushInitialExtent[1]);
                 let newTopY = pos.y - dragStartOffsetY;
                 let newBottomY = newTopY + brushHeight;
-
+                
                 // Constrain brush within plot bounds
                 if (newTopY < margin.top) {
                     newTopY = margin.top;
@@ -205,12 +357,12 @@ function render({ model, el }) {
                     // Ensure top didn't go negative if height is large
                     newTopY = Math.max(margin.top, newTopY);
                 }
-
+                
                 // Update the brush extent for the dragged axis
                 brushes[brushAxis] = [newTopY, newBottomY];
                 draw(); // Redraw (only foreground + UI updates needed)
             });
-
+            
         } else if (isBrushing) {
             // --- Handle Creating/Resizing Brush ---
             requestAnimationFrame(() => {
@@ -225,76 +377,184 @@ function render({ model, el }) {
         }
         // Update cursor based on hover state (optional enhancement - can add later if needed)
     }
-
+    
     function handleMouseUp(event) {
         const wasBrushing = isBrushing; // Store state before resetting
-
+        
         if (isBrushing || isDraggingBrush) {
             // If we were creating/resizing (isBrushing), check for zero-height brush
-             if (wasBrushing && brushes[brushAxis] && Math.abs(brushes[brushAxis][0] - brushes[brushAxis][1]) < 1) {
-                 delete brushes[brushAxis]; // Remove only the current axis' brush if invalid
-             }
-
-             // Reset all interaction states
-             isBrushing = false;
-             isDraggingBrush = false;
-             const anyBrushRemaining = Object.keys(brushes).length > 0;
-
-             // Only change overall brush state if no brushes remain (affects background redraw)
-             if (!anyBrushRemaining && previousBrushState) {
-                 // Trigger background redraw by forcing state mismatch in next draw()
-                 previousBrushState = true; // Will be set false in draw, causing redraw
-             } else if (anyBrushRemaining && !previousBrushState) {
-                 // Trigger background redraw if we just added the first brush
-                 previousBrushState = false;
-             }
-
-
-             brushAxis = null;
-             brushStartY = null;
-             dragStartOffsetY = 0;
-             draggedBrushInitialExtent = null;
-             canvas.classList.remove('brushing', 'dragging'); // Reset cursor classes
-             // console.log("Mouse Up");
-
-             draw(); // Final redraw to update UI and potentially background
+            if (wasBrushing && brushes[brushAxis] && Math.abs(brushes[brushAxis][0] - brushes[brushAxis][1]) < 1) {
+                delete brushes[brushAxis]; // Remove only the current axis' brush if invalid
+            }
+            
+            // Reset all interaction states
+            isBrushing = false;
+            isDraggingBrush = false;
+            const anyBrushRemaining = Object.keys(brushes).length > 0;
+            
+            // Only change overall brush state if no brushes remain (affects background redraw)
+            if (!anyBrushRemaining && previousBrushState) {
+                // Trigger background redraw by forcing state mismatch in next draw()
+                previousBrushState = true; // Will be set false in draw, causing redraw
+            } else if (anyBrushRemaining && !previousBrushState) {
+                // Trigger background redraw if we just added the first brush
+                previousBrushState = false;
+            }
+            
+            
+            brushAxis = null;
+            brushStartY = null;
+            dragStartOffsetY = 0;
+            draggedBrushInitialExtent = null;
+            canvas.classList.remove('brushing', 'dragging'); // Reset cursor classes
+            // console.log("Mouse Up");
+            
+            draw(); // Final redraw to update UI and potentially background
+            model.set("selection", getHighlightedData());
+            model.save_changes();
         }
     }
-
+    
     // --- Button Handlers --- (Mostly same, ensure states are reset)
     function handleReset() {
-        currentData = [...originalIrisData]; brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw();
+        currentData = [...originalData]; brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw();
     }
     function handleSubset() {
-         const isBrushActiveInitially = Object.keys(brushes).length > 0; if (!isBrushActiveInitially) return;
+        const isBrushActiveInitially = Object.keys(brushes).length > 0; if (!isBrushActiveInitially) return;
         const highlighted = getHighlightedData(); if (highlighted.length > 0 && highlighted.length < currentData.length) { currentData = highlighted; brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw(); } else if (isBrushActiveInitially){ brushes = {}; isBrushing = false; isDraggingBrush = false; canvas.classList.remove('brushing', 'dragging'); draw(); }
     }
     function handleExclude() {
-        const isBrushActiveInitially = Object.keys(brushes).length > 0; if (!isBrushActiveInitially) return;
-        const highlighted = getHighlightedData(); if (highlighted.length > 0 && highlighted.length < currentData.length) { const highlightedSet = new Set(highlighted); currentData = currentData.filter(d => !highlightedSet.has(d)); brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw(); } else if (isBrushActiveInitially){ if (highlighted.length === currentData.length) { currentData = []; } brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw(); }
+        const isBrushActiveInitially = Object.keys(brushes).length > 0; 
+        if (!isBrushActiveInitially) return;
+        
+        const highlighted = getHighlightedData(); 
+        if (highlighted.length > 0 && highlighted.length < currentData.length) { 
+            // Create a Set of highlighted data points for efficient lookup
+            const highlightedSet = new Set(highlighted);
+            
+            // Filter out all highlighted points from currentData
+            currentData = currentData.filter(d => !highlightedSet.has(d)); 
+            
+            // Reset brush state
+            brushes = {}; 
+            isBrushing = false; 
+            isDraggingBrush = false; 
+            backgroundNeedsRedraw = true; 
+            canvas.classList.remove('brushing', 'dragging'); 
+            draw(); 
+        } else if (isBrushActiveInitially) { 
+            if (highlighted.length === currentData.length) { 
+                currentData = []; 
+            } 
+            brushes = {}; 
+            isBrushing = false; 
+            isDraggingBrush = false; 
+            backgroundNeedsRedraw = true; 
+            canvas.classList.remove('brushing', 'dragging'); 
+            draw(); 
+        }
     }
-
+    
     // --- Initialization and Resizing ---
     function setup() { /* ... same as before, ensures off-screen canvases are sized/scaled ... */
-        const dpr = window.devicePixelRatio || 1; const rect = canvas.getBoundingClientRect(); width = rect.width; height = rect.height;
-        canvas.width = width * dpr; canvas.height = height * dpr; ctx.resetTransform(); ctx.scale(dpr, dpr);
-        bgCanvas.width = canvas.width; bgCanvas.height = canvas.height; bgCtx.resetTransform(); bgCtx.scale(dpr, dpr);
-        fgCanvas.width = canvas.width; fgCanvas.height = canvas.height; fgCtx.resetTransform(); fgCtx.scale(dpr, dpr);
-        plotWidth = width - margin.left - margin.right; plotHeight = height - margin.top - margin.bottom;
-        xScales = {}; dimensions.forEach((dim, i) => { xScales[dim] = margin.left + i * (plotWidth / (dimensions.length - 1)); });
-        yScales = {}; dimensions.forEach(dim => { const domain = originalIrisData.reduce((acc, d) => [Math.min(acc[0], d[dim]), Math.max(acc[1], d[dim])],[Infinity, -Infinity]); if (domain[0] === domain[1]) { domain[0] -= 0.5; domain[1] += 0.5; } yScales[dim] = { min: domain[0], max: domain[1], scaleFunc: linearScale(domain[0], domain[1], margin.top + plotHeight, margin.top) }; });
-        if (currentData.length === 0) { currentData = [...originalIrisData]; }
-        brushes = {}; isBrushing = false; isDraggingBrush = false; previousBrushState = false; brushAxis = null; brushStartY = null; dragStartOffsetY = 0; draggedBrushInitialExtent = null; canvas.classList.remove('brushing', 'dragging'); canvas.style.cursor = 'default';
-        backgroundNeedsRedraw = true; draw();
+        const dpr = window.devicePixelRatio || 1; 
+        const rect = canvas.getBoundingClientRect(); 
+        width = rect.width; 
+        height = rect.height;
+        
+        // Check if dimensions are valid (non-zero)
+        if (width <= 0 || height <= 0) {
+            console.log("Canvas dimensions are zero, waiting for resize...");
+            
+            // Create a ResizeObserver to watch for dimension changes
+            const resizeObserver = new ResizeObserver(entries => {
+                for (const entry of entries) {
+                    const newWidth = entry.contentRect.width;
+                    const newHeight = entry.contentRect.height;
+                    
+                    if (newWidth > 0 && newHeight > 0) {
+                        console.log(`Canvas resized to ${newWidth}x${newHeight}`);
+                        resizeObserver.disconnect(); // Stop observing
+                        setup(); // Call setup again with valid dimensions
+                        return;
+                    }
+                }
+            });
+            
+            // Start observing the canvas element
+            resizeObserver.observe(canvas);
+            return; // Exit setup until dimensions are valid
+        }
+        
+        // Continue with normal setup when dimensions are valid
+        canvas.width = width * dpr; 
+        canvas.height = height * dpr; 
+        ctx.resetTransform(); 
+        ctx.scale(dpr, dpr);
+        
+        bgCanvas.width = canvas.width; 
+        bgCanvas.height = canvas.height; 
+        bgCtx.resetTransform(); 
+        bgCtx.scale(dpr, dpr);
+        
+        fgCanvas.width = canvas.width; 
+        fgCanvas.height = canvas.height; 
+        fgCtx.resetTransform(); 
+        fgCtx.scale(dpr, dpr);
+        
+        plotWidth = width - margin.left - margin.right; 
+        plotHeight = height - margin.top - margin.bottom;
+        
+        xScales = {}; 
+        dimensions.forEach((dim, i) => { 
+            xScales[dim] = margin.left + i * (plotWidth / (dimensions.length - 1)); 
+        });
+        
+        yScales = {}; 
+        dimensions.forEach(dim => { 
+            const domain = originalData.reduce((acc, d) => [
+                Math.min(acc[0], d[dim]), 
+                Math.max(acc[1], d[dim])
+            ], [Infinity, -Infinity]); 
+            
+            if (domain[0] === domain[1]) { 
+                domain[0] -= 0.5; 
+                domain[1] += 0.5; 
+            } 
+            
+            yScales[dim] = { 
+                min: domain[0], 
+                max: domain[1], 
+                scaleFunc: linearScale(domain[0], domain[1], margin.top + plotHeight, margin.top) 
+            }; 
+        });
+        
+        if (currentData.length === 0) { 
+            currentData = [...originalData]; 
+        }
+        
+        brushes = {}; 
+        isBrushing = false; 
+        isDraggingBrush = false; 
+        previousBrushState = false; 
+        brushAxis = null; 
+        brushStartY = null; 
+        dragStartOffsetY = 0; 
+        draggedBrushInitialExtent = null; 
+        canvas.classList.remove('brushing', 'dragging'); 
+        canvas.style.cursor = 'default';
+        
+        backgroundNeedsRedraw = true; 
+        draw();
     }
-
+    
     // --- Event Listeners --- (mousemove listener updated slightly for clarity)
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mousemove', (event) => {
         // Only handle move if actively brushing OR dragging
         if (isBrushing || isDraggingBrush) {
-             event.preventDefault(); // Prevent text selection, etc.
-             handleMouseMove(event);
+            event.preventDefault(); // Prevent text selection, etc.
+            handleMouseMove(event);
         }
         // Note: Cursor update on hover could be added here if desired
     });
@@ -304,10 +564,10 @@ function render({ model, el }) {
     subsetButton.addEventListener('click', handleSubset);
     excludeButton.addEventListener('click', handleExclude);
     let resizeTimeout; window.addEventListener('resize', () => { clearTimeout(resizeTimeout); resizeTimeout = setTimeout(() => { backgroundNeedsRedraw = true; setup(); }, 150); });
-
+    
     // --- Initial Setup ---
     setup();
-
+    
 };
 
 export default { render };
