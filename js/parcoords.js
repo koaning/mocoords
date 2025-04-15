@@ -86,15 +86,74 @@ function render({ model, el }) {
         "rgba(236, 72, 153, 1)"   // pink
     ];
     
+    // Color gradient configuration
+    const gradientConfig = {
+        startColor: "rgba(239, 68, 68, 1)",  // red
+        endColor: "rgba(16, 185, 129, 1)",   // green
+        useGradient: false                    // Flag to enable/disable gradient
+    };
+    
+    // Function to interpolate between two colors based on a value between 0 and 1
+    function interpolateColor(color1, color2, value) {
+        // Parse the RGBA values
+        const parseRGBA = (color) => {
+            const match = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+            if (match) {
+                return {
+                    r: parseInt(match[1]),
+                    g: parseInt(match[2]),
+                    b: parseInt(match[3]),
+                    a: match[4] ? parseFloat(match[4]) : 1
+                };
+            }
+            return null;
+        };
+        
+        const c1 = parseRGBA(color1);
+        const c2 = parseRGBA(color2);
+        
+        if (!c1 || !c2) return color1; // Fallback to first color if parsing fails
+        
+        // Interpolate each component
+        const r = Math.round(c1.r + (c2.r - c1.r) * value);
+        const g = Math.round(c1.g + (c2.g - c1.g) * value);
+        const b = Math.round(c1.b + (c2.b - c1.b) * value);
+        const a = c1.a + (c2.a - c1.a) * value;
+        
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+    
     // Extract unique groups from data
     const uniqueGroups = [...new Set(originalData.map(d => d.color))];
     
-    // Assign colors to each unique group
-    uniqueGroups.forEach((group, index) => {
-        groupColors[group] = baseColors[index % baseColors.length];
-    });
-    console.log(uniqueGroups);
-    console.log(groupColors);
+    // Function to normalize a value to [0,1] range
+    function normalizeValue(value, min, max) {
+        if (max === min) return 0.5;
+        return (value - min) / (max - min);
+    }
+    
+    // Check if we should use gradient coloring
+    const useGradient = uniqueGroups.length > 0 && 
+                       typeof originalData[0]?.color === 'number';
+    
+    let colorValueRange = null;
+    if (useGradient) {
+        // Calculate min and max of color values for normalization
+        colorValueRange = originalData.reduce((range, d) => ({
+            min: Math.min(range.min, d.color),
+            max: Math.max(range.max, d.color)
+        }), { min: Infinity, max: -Infinity });
+        
+        gradientConfig.useGradient = true;
+        console.log(`Using gradient coloring. Color range: [${colorValueRange.min}, ${colorValueRange.max}]`);
+    } else {
+        // Assign colors to each unique group
+        uniqueGroups.forEach((group, index) => {
+            groupColors[group] = baseColors[index % baseColors.length];
+        });
+        console.log(uniqueGroups);
+        console.log(groupColors);
+    }
     
     const defaultLineAlpha = Math.max(0.005, Math.min(0.05, 30 / DATA_COUNT)); 
     const defaultLineColor = `rgba(156, 163, 175, ${defaultLineAlpha})`; 
@@ -129,7 +188,39 @@ function render({ model, el }) {
     // --- Drawing Functions ---
     function drawBackgroundLayer(isActiveBrush) { 
         console.log(`Drawing background layer (brush active: ${isActiveBrush})...`); const startTime = performance.now(); bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height); bgCtx.lineWidth = 0.5;
-        currentData.forEach(d => { let strokeStyle; if (isActiveBrush) { strokeStyle = defaultLineColor; } else { const color = groupColors[d.color] || defaultLineColor; strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`); } bgCtx.strokeStyle = strokeStyle; bgCtx.beginPath(); dimensions.forEach((dim, i) => { const x = xScales[dim]; const y = yScales[dim].scaleFunc(d[dim]); if (i === 0) bgCtx.moveTo(x, y); else bgCtx.lineTo(x, y); }); bgCtx.stroke(); }); backgroundNeedsRedraw = false; const endTime = performance.now(); console.log(`Background layer took ${(endTime - startTime).toFixed(1)} ms`);
+        currentData.forEach(d => { 
+            let strokeStyle; 
+            if (isActiveBrush) { 
+                strokeStyle = defaultLineColor; 
+            } else { 
+                if (gradientConfig.useGradient && typeof d.color === 'number') {
+                    // Normalize the color value to [0,1] range
+                    const normalizedValue = normalizeValue(d.color, colorValueRange.min, colorValueRange.max);
+                    const baseColor = interpolateColor(
+                        gradientConfig.startColor, 
+                        gradientConfig.endColor, 
+                        normalizedValue
+                    );
+                    strokeStyle = baseColor.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`);
+                } else {
+                    // Use group color
+                    const color = groupColors[d.color] || defaultLineColor;
+                    strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`);
+                }
+            } 
+            bgCtx.strokeStyle = strokeStyle; 
+            bgCtx.beginPath(); 
+            dimensions.forEach((dim, i) => { 
+                const x = xScales[dim]; 
+                const y = yScales[dim].scaleFunc(d[dim]); 
+                if (i === 0) bgCtx.moveTo(x, y); 
+                else bgCtx.lineTo(x, y); 
+            }); 
+            bgCtx.stroke(); 
+        }); 
+        backgroundNeedsRedraw = false; 
+        const endTime = performance.now(); 
+        console.log(`Background layer took ${(endTime - startTime).toFixed(1)} ms`);
     }
     function draw() { 
         const canvasWidth = canvas.width; 
@@ -158,7 +249,19 @@ function render({ model, el }) {
                 fgCtx.lineWidth = 1.0;
                 
                 highlightedData.forEach(d => { 
-                    const color = groupColors[d.color] || defaultLineColor; 
+                    let color;
+                    if (gradientConfig.useGradient && typeof d.color === 'number') {
+                        // Normalize the color value to [0,1] range
+                        const normalizedValue = normalizeValue(d.color, colorValueRange.min, colorValueRange.max);
+                        color = interpolateColor(
+                            gradientConfig.startColor, 
+                            gradientConfig.endColor, 
+                            normalizedValue
+                        );
+                    } else {
+                        // Use group color
+                        color = groupColors[d.color] || defaultLineColor;
+                    }
                     fgCtx.strokeStyle = color.replace(/[\d\.]+\)$/g, `${activeLineAlpha})`); 
                     fgCtx.beginPath(); 
                     dimensions.forEach((dim, i) => { 
