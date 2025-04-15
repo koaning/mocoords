@@ -11,7 +11,7 @@ class ParallelCoordinates(anywidget.AnyWidget):
     _esm = Path(__file__).parent / 'static' / 'parcoords.js'
     _css = Path(__file__).parent / 'static' / 'parcoords.css'
     data = traitlets.List([]).tag(sync=True)
-    selection = traitlets.List([]).tag(sync=True)
+    selection = traitlets.Dict({}).tag(sync=True)
 
     def __init__(self, data, **kwargs):
         super().__init__(**kwargs)
@@ -23,9 +23,12 @@ class ParallelCoordinates(anywidget.AnyWidget):
     @property
     def data_as_pandas(self):
         import pandas as pd 
-        return pd.DataFrame(self.data)
+        return pd.DataFrame(widget.selection["data"])
 
     @property
     def data_as_polars(self):
         import polars as pl
-        return pl.DataFrame(self.data)
+        return pl.DataFrame(widget.selection["data"])
+
+    def get_indices(self):
+        return self.selection["indices"]

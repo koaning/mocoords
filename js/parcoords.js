@@ -63,7 +63,11 @@ function render({ model, el }) {
     }
     
     console.log(data);
-    const originalData = Object.freeze(model.get("data").map(d => ({ ...d, color: d.color || 'default' })));
+    const originalData = Object.freeze(model.get("data").map((d, idx) => ({ 
+        ...d, 
+        color: d.color || 'default',
+        _index: idx  // Store original index
+    })));
     const DATA_COUNT = originalData.length; 
     
     // --- Canvas Setup ---
@@ -73,7 +77,7 @@ function render({ model, el }) {
     
     // --- Configuration ---
     const margin = { top: 40, right: 30, bottom: 30, left: 30 }; 
-    const dimensions = Object.keys(originalData[0] || {}).filter(key => key !== 'color');
+    const dimensions = Object.keys(originalData[0] || {}).filter(key => !['color', '_index'].includes(key));
     
     // Generate colors dynamically based on unique groups in the data
     const groupColors = {}
@@ -88,8 +92,8 @@ function render({ model, el }) {
     
     // Color gradient configuration
     const gradientConfig = {
-        startColor: "rgba(239, 68, 68, 1)",  // red
-        endColor: "rgba(16, 185, 129, 1)",   // green
+        startColor: "rgba(59, 130, 246, 1)",   // blue
+        endColor: "rgba(217, 119, 6, 1)",      // orange
         useGradient: false                    // Flag to enable/disable gradient
     };
     
@@ -132,9 +136,9 @@ function render({ model, el }) {
         return (value - min) / (max - min);
     }
     
-    // Check if we should use gradient coloring
+    // Check if we should use gradient coloring by checking if ALL color values are numbers
     const useGradient = uniqueGroups.length > 0 && 
-                       typeof originalData[0]?.color === 'number';
+                       originalData.every(d => typeof d.color === 'number');
     
     let colorValueRange = null;
     if (useGradient) {
@@ -151,8 +155,8 @@ function render({ model, el }) {
         uniqueGroups.forEach((group, index) => {
             groupColors[group] = baseColors[index % baseColors.length];
         });
-        console.log(uniqueGroups);
-        console.log(groupColors);
+        console.log("Using categorical coloring for groups:", uniqueGroups);
+        console.log("Group color mapping:", groupColors);
     }
     
     const defaultLineAlpha = Math.max(0.005, Math.min(0.05, 30 / DATA_COUNT)); 
@@ -327,18 +331,36 @@ function render({ model, el }) {
     }
     
     // --- Interaction Logic ---
-    function getHighlightedData() { 
-        const activeBrushes = Object.entries(brushes).filter(([_, extent]) => extent); if (activeBrushes.length === 0) return [];
-        return currentData.filter(d => { 
-            return activeBrushes.every(([dim, extent]) => { 
-                const scaleInfo = yScales[dim]; 
-                const val = d[dim]; 
-                const yPos = scaleInfo.scaleFunc(val); 
-                const brushMinY = Math.min(extent[0], extent[1]); 
-                const brushMaxY = Math.max(extent[0], extent[1]); 
-                return yPos >= brushMinY && yPos <= brushMaxY; 
-            }); 
+    function getHighlightedData() {
+        // If no brushes are active, return all data
+        if (Object.keys(brushes).length === 0) {
+            return currentData;
+        }
+        
+        // Filter data based on active brushes
+        const highlighted = currentData.filter(d => {
+            // Check if the data point is within all active brushes
+            return Object.entries(brushes).every(([dim, extent]) => {
+                const value = d[dim];
+                const yScale = yScales[dim].scaleFunc;
+                const valueY = yScale(value);
+                
+                // Get min and max Y values of the brush
+                const brushMinY = Math.min(extent[0], extent[1]);
+                const brushMaxY = Math.max(extent[0], extent[1]);
+                
+                // Check if the data point's value is within the brush extent
+                return valueY >= brushMinY && valueY <= brushMaxY;
+            });
         });
+
+        // Update the model with both the data and indices
+        const selectionInfo = {
+            data: highlighted,
+            indices: highlighted.map(d => d._index)
+        };
+        
+        return highlighted;
     }
     function getMousePos(canvas, evt) {
         const rect = canvas.getBoundingClientRect();
@@ -410,33 +432,16 @@ function render({ model, el }) {
                     isDraggingBrush = false;
                     // console.log("Clearing brushes");
                     draw(); // Redraw (will trigger background update)
+                    
+                    // Update model with full dataset selection when brushes are cleared
+                    model.set("selection", {
+                        data: currentData,
+                        indices: currentData.map(d => d._index)
+                    });
+                    model.save_changes();
                 }
             }
         }
-    }
-    
-    function getHighlightedData() {
-        // If no brushes are active, return all data
-        if (Object.keys(brushes).length === 0) {
-            return currentData;
-        }
-        
-        // Filter data based on active brushes
-        return currentData.filter(d => {
-            // Check if the data point is within all active brushes
-            return Object.entries(brushes).every(([dim, extent]) => {
-                const value = d[dim];
-                const yScale = yScales[dim].scaleFunc;
-                const valueY = yScale(value);
-                
-                // Get min and max Y values of the brush
-                const brushMinY = Math.min(extent[0], extent[1]);
-                const brushMaxY = Math.max(extent[0], extent[1]);
-                
-                // Check if the data point's value is within the brush extent
-                return valueY >= brushMinY && valueY <= brushMaxY;
-            });
-        });
     }
     
     function handleMouseMove(event) {
@@ -504,28 +509,70 @@ function render({ model, el }) {
                 previousBrushState = false;
             }
             
-            
             brushAxis = null;
             brushStartY = null;
             dragStartOffsetY = 0;
             draggedBrushInitialExtent = null;
             canvas.classList.remove('brushing', 'dragging'); // Reset cursor classes
-            // console.log("Mouse Up");
             
             draw(); // Final redraw to update UI and potentially background
-            model.set("selection", getHighlightedData());
+            
+            // Get highlighted data and update model with both data and indices
+            const highlighted = getHighlightedData();
+            model.set("selection", {
+                data: highlighted,
+                indices: highlighted.map(d => d._index)
+            });
             model.save_changes();
         }
     }
     
-    // --- Button Handlers --- (Mostly same, ensure states are reset)
+    // --- Button Handlers ---
     function handleReset() {
-        currentData = [...originalData]; brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw();
+        currentData = [...originalData]; 
+        brushes = {}; 
+        isBrushing = false; 
+        isDraggingBrush = false; 
+        backgroundNeedsRedraw = true; 
+        canvas.classList.remove('brushing', 'dragging'); 
+        draw();
+        
+        // Update model with full dataset selection
+        model.set("selection", {
+            data: currentData,
+            indices: currentData.map(d => d._index)
+        });
+        model.save_changes();
     }
+    
     function handleSubset() {
-        const isBrushActiveInitially = Object.keys(brushes).length > 0; if (!isBrushActiveInitially) return;
-        const highlighted = getHighlightedData(); if (highlighted.length > 0 && highlighted.length < currentData.length) { currentData = highlighted; brushes = {}; isBrushing = false; isDraggingBrush = false; backgroundNeedsRedraw = true; canvas.classList.remove('brushing', 'dragging'); draw(); } else if (isBrushActiveInitially){ brushes = {}; isBrushing = false; isDraggingBrush = false; canvas.classList.remove('brushing', 'dragging'); draw(); }
+        const isBrushActiveInitially = Object.keys(brushes).length > 0; 
+        if (!isBrushActiveInitially) return;
+        
+        const highlighted = getHighlightedData(); 
+        if (highlighted.length > 0 && highlighted.length < currentData.length) { 
+            currentData = highlighted; 
+            brushes = {}; 
+            isBrushing = false; 
+            isDraggingBrush = false; 
+            backgroundNeedsRedraw = true; 
+            canvas.classList.remove('brushing', 'dragging'); 
+            draw(); 
+            // Update model with new subset
+            model.set("selection", {
+                data: currentData,
+                indices: currentData.map(d => d._index)
+            });
+            model.save_changes();
+        } else if (isBrushActiveInitially) { 
+            brushes = {}; 
+            isBrushing = false; 
+            isDraggingBrush = false; 
+            canvas.classList.remove('brushing', 'dragging'); 
+            draw(); 
+        }
     }
+    
     function handleExclude() {
         const isBrushActiveInitially = Object.keys(brushes).length > 0; 
         if (!isBrushActiveInitially) return;

@@ -12,7 +12,7 @@ def read(fname):
 
 setup(
     name="mocoords",
-    version="0.1.0",
+    version="0.1.1",
     description="draw a dataset from inside Jupyter",
     author="Vincent D. Warmerdam",
     packages=find_packages(exclude=["notebooks"]),
